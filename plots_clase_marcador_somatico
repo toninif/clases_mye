@@ -1,0 +1,226 @@
+
+datos <- tibble(
+  Grupo = rep(c("Control", "Lesión no frontal", "Lesión prefrontal"), each = 2),
+  Estimulo = rep(c("Emocional", "Neutro"), times = 3),
+  SCR = c(1.2, 0.3, 1.1, 0.4, 0.4, 0.3),
+  SD = c(0.15, 0.12, 0.13, 0.10, 0.08, 0.09)
+)
+
+p <- ggplot(datos, aes(x = Grupo, y = SCR, fill = Estimulo)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.85), width = 0.7, color = "grey40", alpha = 0.95) +
+  geom_errorbar(aes(ymin = SCR - SD, ymax = SCR + SD), 
+                width = 0.18, 
+                position = position_dodge(width = 0.85), 
+                color = "grey40") +
+  geom_text(aes(label = round(SCR, 2)),
+            position = position_dodge(width = 0.85),
+            vjust = -0.9,
+            size = 4.5,
+            color = "black",
+            fontface = "bold") +
+  labs(
+    title = "Respuesta galvánica ante estímulos emocionales y neutros",
+    subtitle = "Comparación entre grupos: control, lesión no frontal y prefrontal",
+    y = "SCR (microsiemens)",
+    x = NULL,
+    fill = "Tipo de estímulo"
+  ) +
+  scale_fill_manual(values = c("#0A9396", "#EE9B00")) +
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", size = 20),
+    plot.subtitle = element_text(size = 13, margin = margin(b = 10)),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    axis.text.x = element_text(face = "bold", size = 15),
+    axis.text.y = element_text(size = 13),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.text = element_text(size = 13),
+    plot.margin = margin(15, 20, 15, 20)
+  )
+
+ggsave("SCR_barras.png", plot = p, width = 10, height = 7, dpi = 400)
+
+
+
+
+
+datos_mazos <- tibble(
+  Bloque = rep(1:5, each = 4),
+  Grupo = rep(rep(c("Control", "Lesionados prefrontales"), each = 2), times = 5),
+  TipoMazo = rep(c("Buenos (C+D)", "Malos (A+B)"), times = 2 * 5),
+  Elecciones = c(
+    # BLOQUE 1
+    8, 12,      # Control: Buenos, Malos
+    11, 9,      # Lesionados: Buenos, Malos
+    # BLOQUE 2
+    13, 7,      # Control
+    7, 13,      # Lesionados
+    # BLOQUE 3
+    11, 9,      # Control
+    2, 18,      # Lesionados
+    # BLOQUE 4
+    18, 2,      # Control
+    7, 13,      # Lesionados
+    # BLOQUE 5
+    19, 1,      # Control
+    8, 12       # Lesionados
+  )
+)
+
+
+cartas <- ggplot(datos_mazos, aes(x = Bloque, y = Elecciones, color = TipoMazo, group = TipoMazo)) +
+  geom_line(size = 1.4) +
+  geom_point(size = 3) +
+  facet_wrap(~Grupo) +
+  scale_x_continuous(breaks = 1:5, labels = paste0("B", 1:5)) +
+  scale_color_manual(values = c("Buenos (C+D)" = "#0A9396", "Malos (A+B)" = "#EE9B00")) +
+  labs(
+    title = "Elecciones de mazos buenos vs malos",
+    x = "Bloques de 20 cartas",
+    y = "Número de elecciones",
+    color = "Tipo de mazo"
+  ) +
+  theme_minimal(base_size = 18) +
+  theme(
+    plot.title = element_text(face = "bold", size = 22),
+    plot.subtitle = element_text(size = 15),
+    strip.text = element_text(face = "bold", size = 17),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    axis.text.x = element_text(size = 15, face = "bold"),
+    axis.text.y = element_text(size = 15),
+    legend.title = element_text(size = 16, face = "bold"),
+    legend.text = element_text(size = 15)
+  )
+
+
+ggsave("cartas1.png", plot = cartas, width = 10, height = 7, dpi = 400)
+
+
+
+
+
+
+set.seed(123) # Para reproducibilidad
+
+# Crear data frame largo
+n_participantes <- 5
+bloques <- 1:5
+
+# Función para simular elecciones de buenos para cada grupo
+simular_elecciones <- function(grupo) {
+  map_df(bloques, function(bloque) {
+    base <- switch(grupo,
+                   "Control" = c(8, 12, 14, 16, 17),  # tendencia a mejorar
+                   "Lesionados prefrontales" = c(9, 10, 10, 9, 8)) # no mejoran
+    tibble(
+      Bloque = bloque,
+      Buenos = round(rnorm(n_participantes, mean = base[bloque], sd = 1.2)),
+      Malos = 20 - round(rnorm(n_participantes, mean = base[bloque], sd = 1.2))
+    )
+  }) %>%
+    mutate(Grupo = grupo,
+           Participante = rep(1:n_participantes, times = length(bloques)))
+}
+
+datos_ctrl <- simular_elecciones("Control")
+datos_les <- simular_elecciones("Lesionados prefrontales")
+
+# Unir y transformar a formato largo
+datos_all <- bind_rows(datos_ctrl, datos_les) %>%
+  pivot_longer(cols = c(Buenos, Malos), names_to = "TipoMazo", values_to = "Elecciones") %>%
+  mutate(Proporcion = Elecciones / 20)
+
+
+
+# Ahora calcular medias y error estándar por grupo/bloque/tipo de mazo
+datos_sum <- datos_all %>%
+  group_by(Grupo, Bloque, TipoMazo) %>%
+  summarise(
+    Media = mean(Proporcion),
+    SD = sd(Proporcion),
+    n = n(),
+    SE = SD / sqrt(n)
+  )
+
+# Definir colores y tipos de línea
+colores_grupo <- c("Control" = "#0A9396", "Lesionados prefrontales" = "#EE9B00")
+linetype_mazo <- c("Buenos" = "solid", "Malos" = "dashed")
+
+# Ajustar los factores para el gráfico
+datos_sum <- datos_sum %>%
+  mutate(
+    Grupo = factor(Grupo, levels = c("Control", "Lesionados prefrontales")),
+    TipoMazo = factor(TipoMazo, levels = c("Buenos", "Malos"))
+  )
+
+cartas2 <- ggplot(datos_sum, aes(x = Bloque, y = Media, color = Grupo, linetype = TipoMazo, group = interaction(Grupo, TipoMazo))) +
+  geom_line(size = 1.4) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = Media - SE, ymax = Media + SE), width = 0.18, size = 1) +
+  scale_color_manual(values = colores_grupo) +
+  scale_linetype_manual(values = linetype_mazo) +
+  scale_x_continuous(breaks = 1:5, labels = paste0("Bloque ", 1:5)) +
+  labs(
+    title = "Iowa Gambling Task: Proporción de elecciones de mazos buenos y malos",
+    x = "Bloques de 20 cartas",
+    y = "Proporción de elecciones",
+    color = "Grupo",
+    linetype = "Tipo de mazo"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    plot.title = element_text(face = "bold", size = 19),
+    plot.subtitle = element_text(size = 13),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 13)
+  )
+
+
+
+ggsave("cartas2.png", plot = cartas2, width = 10, height = 7, dpi = 400)
+
+
+
+
+
+
+scr_data2 <- tibble(
+  Grupo = rep(c("Control", "Lesionados prefrontales"), each = 2),
+  TipoMazo = rep(c("Buenos (C+D)", "Malos (A+B)"), times = 2),
+  SCR = c(
+    0.12,  # Control, Buenos (bajo)
+    0.38,  # Control, Malos  (alto)
+    0.13,  # Lesionado, Buenos (bajo)
+    0.15   # Lesionado, Malos  (bajo)
+  )
+)
+
+cartasSRC <- ggplot(scr_data2, aes(x = TipoMazo, y = SCR, fill = Grupo)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = round(SCR, 2)), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.7, 
+            size = 4, 
+            fontface = "bold") +
+  scale_fill_manual(values = c("Control" = "#0A9396", "Lesionados prefrontales" = "#EE9B00")) +
+  labs(
+    title = "SCR anticipatoria antes de elegir carta",
+    x = "Tipo de mazo",
+    y = "Respuesta galvánica anticipatoria",
+    fill = "Grupo"
+  ) +
+  theme_minimal(base_size = 17) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 13),
+    axis.title.x = element_text(size = 15, face = "bold"),
+    axis.title.y = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 14, face = "bold"),
+    axis.text.y = element_text(size = 14),
+    legend.title = element_text(size = 16, face = "bold"),
+    legend.text = element_text(size = 14)
+  )
+
+ggsave("cartasSRC.png", plot = cartasSRC, width = 10, height = 7, dpi = 400)
